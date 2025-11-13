@@ -20,8 +20,14 @@ Interactive web application demonstrating shortest path algorithms (A*, Dijkstra
 - PostgreSQL + PostGIS for spatial data storage
 - Redis for graph caching layer
 
-**Service 2: Pathfinding Engine (Python/FastAPI)**
-- Algorithm implementations: A*, Dijkstra, Bidirectional Dijkstra, Bellman-Ford, Floyd-Warshall
+**Service 2: Pathfinding Engine (Python/FastAPI) [COMPLETED]**
+- **Files:**
+  - `services/pathfinding-engine/app/core/pathfinding.py`
+  - `services/pathfinding-engine/app/core/dijkstra.py`
+  - `services/pathfinding-engine/app/core/astar.py`
+  - `services/pathfinding-engine/app/websockets/websockets.py`
+  - `services/pathfinding-engine/app/api/endpoints.py`
+- Algorithm implementations: A*, Dijkstra
 - Real-time node visit streaming via WebSocket
 - Performance metrics collection (nodes explored, path cost)
 - K-shortest paths computation

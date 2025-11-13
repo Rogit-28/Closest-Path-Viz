@@ -22,3 +22,13 @@ async def create_graph_and_save(place_name: str, db: Session = Depends(get_db)):
     graph = create_graph_from_osm(place_name)
     db_graph = crud.create_graph(db=db, place_name=place_name, graph=graph)
     return {"message": f"Graph for {place_name} created and saved with id {db_graph.id}."}
+
+@router.get("/graphs/{place_name}")
+async def get_graph(place_name: str, db: Session = Depends(get_db)):
+    """
+    Retrieves a graph by its place name.
+    """
+    db_graph = crud.get_graph_by_place_name(db=db, place_name=place_name)
+    if db_graph is None:
+        return {"error": "Graph not found"}
+    return db_graph

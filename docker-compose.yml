@@ -35,6 +35,18 @@ services:
       - DATABASE_URL=postgresql://user:password@db:5432/pathfinding
       - REDIS_URL=redis://redis:6379
 
+  pathfinding-engine:
+    build:
+      context: ./services/pathfinding-engine
+      dockerfile: Dockerfile
+    container_name: pathfinding_engine_service
+    ports:
+      - "8002:8000"
+    depends_on:
+      - graph-data-service
+    environment:
+      - GRAPH_DATA_SERVICE_URL=http://graph-data-service:8000
+
 volumes:
   postgres_data:
   redis_data:

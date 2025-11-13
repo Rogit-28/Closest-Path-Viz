@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+networkx
+websockets
+requests
+python-socketio

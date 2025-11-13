@@ -4,6 +4,12 @@ from networkx.readwrite import json_graph
 from shapely.geometry import box
 import networkx as nx
 
+def get_graph_by_place_name(db: Session, place_name: str):
+    """
+    Retrieves a graph by its place name.
+    """
+    return db.query(models.Graph).filter(models.Graph.place_name == place_name).first()
+
 def create_graph(db: Session, place_name: str, graph: nx.DiGraph):
     """
     Saves a graph to the database.
