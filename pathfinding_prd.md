@@ -50,7 +50,12 @@ Interactive web application demonstrating shortest path algorithms (A*, Dijkstra
 
 ## 4. Key Features
 
-### 4.1 Graph Construction
+### 4.1 Graph Construction [COMPLETED]
+- **Files:**
+  - `services/graph-data-service/app/core/graph.py`
+  - `services/graph-data-service/app/db/models.py`
+  - `services/graph-data-service/app/db/crud.py`
+  - `services/graph-data-service/app/api/endpoints.py`
 - **Node Definition:** Road intersections, dead ends, POIs
 - **Edge Weights:** User-selectable
   - Distance (meters): Haversine calculation
