@@ -1,75 +1,67 @@
 # Pathfinding Visualization Platform
 
-Real-time pathfinding algorithm visualization on OpenStreetMap road networks. Compare Dijkstra, A\*, Bidirectional Search, Bellman-Ford, and Floyd-Warshall side-by-side with animated node exploration, interactive maps, and performance metrics.
+Local-first pathfinding algorithm visualization on OpenStreetMap road networks.
+Compare Dijkstra, A*, Bidirectional Search, Bellman-Ford, and Floyd-Warshall with real-time streamed exploration events, interactive map playback controls, and metrics.
 
 ![Tech Stack](https://img.shields.io/badge/React_18-TypeScript-blue) ![Backend](https://img.shields.io/badge/FastAPI-Python-green) ![Map](https://img.shields.io/badge/MapLibre_GL_JS-purple)
 
-## Features
+## Highlights
 
-- **5 Pathfinding Algorithms** — Dijkstra, A\*, Bidirectional Dijkstra, Bellman-Ford, Floyd-Warshall
-- **Real-time Visualization** — WebSocket-streamed junction + street exploration (node visits + outgoing edge candidates) with animated rendering
-- **Algorithm Comparison** — Run multiple algorithms simultaneously with radar charts and metrics tables
-- **Interactive Map** — Click to set start/end points on a MapLibre dark-theme map (OpenStreetMap + CARTO tiles)
-- **Configurable Parameters** — Heuristic functions (Haversine, Manhattan, Euclidean), weight functions (distance, time, hybrid), K-shortest paths
-- **Metrics Dashboard** — Computation time, nodes explored, path length, memory usage with Recharts bar charts
-- **Settings Panel** — Full user preferences for pathfinding defaults, visualization speed, and cache management
-- **Cache Management** — Pre-cached city graphs with configurable refresh schedules
-- **Synthetic Fallback** — Demo mode generates a grid graph when OSM data is unavailable
+- **5 core pathfinding algorithms** with side-by-side comparison
+- **SSE streaming pipeline** (`/api/pathfinding/stream`) for real-time exploration events
+- **Client-side playback engine** (pause/resume/scrub/speed control) via Zustand + `requestAnimationFrame`
+- **Interactive MapLibre map** with start/end point selection and rendered path geometry
+- **Configurable routing** (A* heuristics, distance/time/hybrid weights, K-path behavior)
+- **Cache APIs** for graph warming and status checks (`/api/cache/warm`, `/api/cache/status`)
+- **Metrics APIs** (`/metrics`, `/metrics/summary`) for runtime performance and connection stats
+- **Graceful local fallback** to synthetic graph when OSM data is unavailable
 
-## Architecture
+## Local-First Runtime Model
+
+This project is intended to run **locally** and degrades gracefully when optional services are missing.
+
+- PostgreSQL and Redis are optional for development/runtime startup
+- If OSM ingestion fails, backend serves a synthetic fallback graph
+- Frontend and backend run independently (`5173` + `8000`) during local development
+- Docker Compose can run the full local stack when you want all services together
+
+## Architecture (Current)
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│  Frontend (React 18 + TypeScript + Vite)                   │
-│  ├── MapLibre GL JS — map rendering + GeoJSON layers       │
-│  ├── Zustand — global state management                     │
-│  ├── Recharts — metrics bar charts + radar comparison      │
-│  ├── Tailwind CSS — dark theme UI                          │
-│  └── WebSocket client — real-time algorithm streaming      │
-├────────────────────────────────────────────────────────────┤
-│  Backend (FastAPI + Python)                                │
-│  ├── Pathfinding Engine — 5 algorithm implementations      │
-│  │   ├── dijkstra.py — standard priority queue             │
-│  │   ├── astar.py — 4 configurable heuristics              │
-│  │   ├── bidirectional.py — forward/backward search        │
-│  │   ├── bellman_ford.py — negative cycle detection         │
-│  │   ├── floyd_warshall.py — numpy matrix all-pairs        │
-│  │   └── yen_k_shortest.py — K-shortest paths              │
-│  ├── Graph Service — OSM via osmnx + synthetic fallback    │
-│  ├── WebSocket handler — node visit streaming              │
-│  ├── Cache Service — 50 top cities, schedule CRUD          │
-│  └── Benchmarking — performance comparison suite           │
-├────────────────────────────────────────────────────────────┤
-│  Infrastructure                                            │
-│  ├── PostgreSQL + PostGIS — spatial data storage            │
-│  ├── Redis — graph caching layer                           │
-│  ├── Celery — async cache refresh tasks                    │
-│  ├── Docker Compose — full orchestration                   │
-│  └── Nginx — reverse proxy                                 │
-└────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Frontend (React 18 + TypeScript + Vite)                                │
+│ ├── MapLibre GL JS: map + path/exploration layers                      │
+│ ├── Zustand appStore: global app/run/results state                     │
+│ ├── Zustand playbackStore: event buffering + playback indices/speed    │
+│ ├── useSSEPathfinding: EventSource client for /api/pathfinding/stream  │
+│ └── usePlaybackLoop: requestAnimationFrame playback engine             │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Backend (FastAPI + Python)                                              │
+│ ├── /api/pathfinding/stream: SSE event stream                           │
+│ ├── /api/pathfinding/*: REST endpoints (find-path, compare, benchmark) │
+│ ├── Pathfinding engine: dijkstra, astar, bidirectional, bellman_ford,  │
+│ │   floyd_warshall (+ yen_k_shortest support path)                      │
+│ ├── Graph service: OSM fetch + in-memory/file cache + synthetic fallback│
+│ ├── Cache routes: warm/status/cities/refresh/schedule                  │
+│ └── Metrics routes: runtime/graph/algorithm/SSE stats                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Local Infrastructure                                                     │
+│ ├── Optional PostgreSQL + PostGIS                                       │
+│ ├── Optional Redis                                                      │
+│ ├── Docker Compose orchestration                                        │
+│ └── Optional Nginx static + reverse proxy setup                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start
 
 ### Prerequisites
 
-- **Node.js** 18+ and npm
-- **Python** 3.11 (recommended)
-- **Docker & Docker Compose** (optional, for full stack)
+- Node.js 18+
+- Python 3.11+
+- Docker + Docker Compose (optional)
 
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The frontend runs at `http://localhost:5173`.
-Map rendering is tokenless by default via MapLibre + OpenStreetMap/CARTO raster tiles.
-Without the backend, the map still renders but pathfinding requests will show connection/errors.
-
-### Backend
+### 1) Run Backend (local)
 
 ```bash
 cd backend
@@ -79,113 +71,153 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-API docs available at `http://localhost:8000/docs`.
-For real-road routing fidelity (not synthetic fallback), ensure `osmnx` installs successfully in the backend environment.
+Backend endpoints:
 
-### Docker (Full Stack)
+- API docs: `http://localhost:8000/docs`
+- Health: `http://localhost:8000/health`
+
+### 2) Run Frontend (local)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend runs at `http://localhost:5173`.
+
+### 3) Optional: Full local stack with Docker
 
 ```bash
 docker compose up --build
 ```
 
-This starts PostgreSQL+PostGIS, Redis, the FastAPI backend, and Nginx.
-The Postgres service is internal to the Compose network (no host DB port binding by default).
+This brings up postgres, redis, backend, and nginx as local services.
 
 ## Configuration
 
-Copy `backend/.env.example` to `backend/.env` and configure:
+### Backend
+
+Copy `backend/.env.example` to `backend/.env` and adjust if needed.
+
+Important settings:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/pathfinding
+DATABASE_URL=postgresql+asyncpg://pathfinder:pathfinder_password@localhost:5432/pathfinding
 REDIS_URL=redis://localhost:6379/0
+DEFAULT_GRAPH_RADIUS_KM=10.0
+FLOYD_WARSHALL_NODE_LIMIT=1000
+GRAPH_CACHE_DIR=./data/graphs
 ```
 
-The backend gracefully degrades — it starts without PostgreSQL or Redis, falling back to in-memory storage.
-When OSM fetch fails or `osmnx` is missing, the app falls back to a synthetic graph and now surfaces an in-app warning. In that mode, routes may not follow real streets.
+### Frontend
 
-## API Endpoints
+`frontend/.env.example` includes:
+
+```env
+VITE_API_URL=http://localhost:8000
+VITE_WS_URL=ws://localhost:8000
+```
+
+Current runtime pathfinding stream is SSE-based (`/api/pathfinding/stream`).
+
+## API Surface (Current)
+
+### Core + Streaming
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/pathfinding/find-path` | Run pathfinding with selected algorithms |
-| `GET` | `/api/pathfinding/algorithms` | List available algorithms |
-| `POST` | `/api/pathfinding/benchmark` | Benchmark algorithms with N iterations |
-| `GET` | `/api/pathfinding/compare` | Compare algorithm performance |
-| `WS` | `/ws/pathfinding` | WebSocket for real-time node + edge exploration streaming + geometry-aware final paths |
-| `GET` | `/api/cache/cities` | List cached cities |
-| `POST` | `/api/cache/refresh` | Refresh/defer a city cache by id |
-| `POST` | `/api/cache/schedule` | Set a city's cache schedule |
-| `GET` | `/api/user/settings` | Get user settings |
+|---|---|---|
+| `GET` | `/api/pathfinding/stream` | SSE stream for visualization events (`loading`, `node_visit`, `edge_explore`, `frontier_update`, `algorithm_start`, `complete`, `all_complete`, etc.) |
+| `POST` | `/api/pathfinding/find-path` | Non-streaming pathfinding run |
+| `GET` | `/api/pathfinding/algorithms` | List supported algorithms |
+| `GET` | `/api/pathfinding/algorithm/{algorithm_name}` | Get metadata for one algorithm |
+| `POST` | `/api/pathfinding/benchmark` | Benchmark selected algorithms |
+| `GET` | `/api/pathfinding/compare` | Compare algorithms for one coordinate pair |
+
+### Cache + Settings + Metrics
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/cache/warm` | Warm region graph cache in background |
+| `GET` | `/api/cache/status` | Check cache presence for region |
+| `GET` | `/api/cache/cities` | List configured cached cities |
+| `POST` | `/api/cache/refresh` | Approve/defer city refresh |
+| `POST` | `/api/cache/schedule` | Set city refresh schedule |
+| `GET` | `/api/user/settings` | Read user settings |
 | `PUT` | `/api/user/settings` | Update user settings |
+| `DELETE` | `/api/user/settings` | Reset user settings |
+| `GET` | `/metrics` | Full runtime metrics |
+| `GET` | `/metrics/summary` | Condensed health/usage summary |
+| `GET` | `/api/config` | Frontend runtime config (includes `sse_url`) |
 | `GET` | `/health` | Health check |
-| `GET` | `/api/config` | Frontend configuration |
 
 ## Algorithms
 
 | Algorithm | Time Complexity | Space | Best For |
-|-----------|----------------|-------|----------|
-| **Dijkstra** | O((V+E) log V) | O(V) | Guaranteed shortest path |
-| **A\*** | O((V+E) log V) | O(V) | Faster with good heuristic |
-| **Bidirectional** | O((V+E) log V) | O(V) | Reduces search space ~50% |
-| **Bellman-Ford** | O(V·E) | O(V) | Handles negative weights |
+|---|---|---|---|
+| **Dijkstra** | O((V+E) log V) | O(V) | Guaranteed shortest path with non-negative weights |
+| **A*** | O((V+E) log V) | O(V) | Faster targeted search with heuristics |
+| **Bidirectional Dijkstra** | O((V+E) log V) | O(V) | Reduced search space from both ends |
+| **Bellman-Ford** | O(V·E) | O(V) | Supports negative weights |
 | **Floyd-Warshall** | O(V³) | O(V²) | All-pairs shortest paths |
-| **Yen's K-Shortest** | O(KV(V+E) log V) | O(KV) | Alternative route options |
 
 ## Project Structure
 
 ```
 ├── frontend/
 │   ├── src/
-│   │   ├── components/       # React components
-│   │   │   ├── MapView.tsx          # MapLibre GL map with GeoJSON layers
-│   │   │   ├── ControlPanel.tsx     # Algorithm selection + config sidebar
-│   │   │   ├── AnimationControls.tsx # Play/pause/speed floating bar
-│   │   │   ├── MetricsDashboard.tsx  # Results + Recharts bar charts
-│   │   │   ├── AlgorithmComparison.tsx # Radar chart + comparison table
-│   │   │   ├── SettingsPanel.tsx     # Full settings modal
-│   │   │   └── CacheManager.tsx      # City cache management
-│   │   ├── stores/appStore.ts   # Zustand global state
-│   │   ├── hooks/               # useWebSocket, usePathfinding
-│   │   ├── types/index.ts       # Shared TypeScript types
-│   │   ├── utils/api.ts         # REST API client
-│   │   └── styles/              # Tailwind + visualization CSS
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── vite.config.ts
-│   └── tailwind.config.js
+│   │   ├── components/
+│   │   │   ├── MapView.tsx
+│   │   │   ├── ControlPanel.tsx
+│   │   │   ├── AnimationControls.tsx
+│   │   │   ├── MetricsDashboard.tsx
+│   │   │   ├── AlgorithmComparison.tsx
+│   │   │   ├── CacheManager.tsx
+│   │   │   ├── SettingsPanel.tsx
+│   │   │   └── ErrorBoundary.tsx
+│   │   ├── hooks/
+│   │   │   ├── useSSEPathfinding.ts
+│   │   │   ├── usePlaybackLoop.ts
+│   │   │   └── useUserLocation.ts
+│   │   ├── stores/
+│   │   │   ├── appStore.ts
+│   │   │   └── playbackStore.ts
+│   │   ├── utils/api.ts
+│   │   └── types/index.ts
+│   └── package.json
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI app factory + WebSocket route
-│   │   ├── websockets.py        # WebSocket handler + ConnectionManager
-│   │   ├── core/                # Config, database, Redis, Celery
-│   │   ├── models/              # SQLAlchemy models
-│   │   ├── schemas/             # Pydantic request/response models
-│   │   ├── api/routes/          # REST endpoints
-│   │   └── services/
-│   │       ├── graph/           # OSM graph loading + synthetic fallback
-│   │       ├── pathfinding/     # Algorithm implementations
-│   │       ├── cache/           # City cache management
-│   │       └── benchmarking.py  # Performance testing
-│   ├── tests/                   # Unit + integration tests
-│   ├── requirements.txt
+│   │   ├── main.py
+│   │   ├── api/routes/
+│   │   │   ├── pathfinding.py
+│   │   │   ├── pathfinding_sse.py
+│   │   │   ├── cache.py
+│   │   │   ├── settings.py
+│   │   │   └── metrics.py
+│   │   ├── services/pathfinding/
+│   │   └── services/graph/
+│   ├── tests/
 │   └── .env.example
 ├── docker-compose.yml
 ├── Dockerfile
-└── .gitignore
+└── nginx.conf
 ```
 
-## Testing
+## Testing & Validation
+
+Backend:
 
 ```bash
 cd backend
-pytest tests/ -v --cov=app
+pytest tests -v --cov=app
 ```
 
-Run a single test:
+Frontend checks:
 
 ```bash
-cd backend
-pytest tests/unit/test_algorithms.py::test_dijkstra_simple_path -v
+cd frontend
+npm run lint
+npm run build
 ```
 
 ## License
