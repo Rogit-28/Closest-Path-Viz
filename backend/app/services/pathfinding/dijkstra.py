@@ -27,13 +27,14 @@ class DijkstraPathfinder(PathfindingAlgorithm):
             self._nodes_explored = 0
             return self._build_result(graph, [start], 0, 0, 0, weight)
 
-        self._begin_tracking()
+        self._begin_tracking(config)
 
         # Priority queue: (cost, node_id)
         pq = [(0.0, start)]
         dist = {start: 0.0}
         prev = {}
         visited = set()
+        hybrid_resolver = (config or {}).get("hybrid_resolver")
 
         while pq:
             current_cost, current = heapq.heappop(pq)
@@ -56,10 +57,26 @@ class DijkstraPathfinder(PathfindingAlgorithm):
                 if neighbor in visited:
                     continue
                 edge_data = graph[current][neighbor]
-                edge_weight = edge_data.get(weight, edge_data.get("distance", 1))
+                if weight == "hybrid" and hybrid_resolver is not None:
+                    edge_weight = hybrid_resolver(edge_data)
+                else:
+                    edge_weight = edge_data.get(weight, edge_data.get("distance", 1))
                 new_cost = current_cost + edge_weight
+                is_improved = new_cost < dist.get(neighbor, float("inf"))
+                await self._stream_edge(
+                    websocket,
+                    graph,
+                    current,
+                    neighbor,
+                    new_cost,
+                    {
+                        "edge_weight": round(edge_weight, 4),
+                        "candidate": True,
+                        "improved": is_improved,
+                    },
+                )
 
-                if new_cost < dist.get(neighbor, float("inf")):
+                if is_improved:
                     dist[neighbor] = new_cost
                     prev[neighbor] = current
                     heapq.heappush(pq, (new_cost, neighbor))

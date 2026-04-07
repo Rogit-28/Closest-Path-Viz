@@ -26,7 +26,7 @@ class BidirectionalDijkstraPathfinder(PathfindingAlgorithm):
             self._nodes_explored = 0
             return self._build_result(graph, [start], 0, 0, 0, weight)
 
-        self._begin_tracking()
+        self._begin_tracking(config)
 
         # Build reverse graph for backward search
         reverse_graph = graph.reverse(copy=False)
@@ -42,6 +42,7 @@ class BidirectionalDijkstraPathfinder(PathfindingAlgorithm):
         bwd_dist = {end: 0.0}
         bwd_prev = {}
         bwd_visited = set()
+        hybrid_resolver = (config or {}).get("hybrid_resolver")
 
         best_cost = float("inf")
         meeting_node = None
@@ -72,9 +73,26 @@ class BidirectionalDijkstraPathfinder(PathfindingAlgorithm):
                         if neighbor in fwd_visited:
                             continue
                         edge_data = graph[fwd_node][neighbor]
-                        edge_w = edge_data.get(weight, edge_data.get("distance", 1))
+                        if weight == "hybrid" and hybrid_resolver is not None:
+                            edge_w = hybrid_resolver(edge_data)
+                        else:
+                            edge_w = edge_data.get(weight, edge_data.get("distance", 1))
                         new_cost = fwd_cost + edge_w
-                        if new_cost < fwd_dist.get(neighbor, float("inf")):
+                        is_improved = new_cost < fwd_dist.get(neighbor, float("inf"))
+                        await self._stream_edge(
+                            websocket,
+                            graph,
+                            fwd_node,
+                            neighbor,
+                            new_cost,
+                            {
+                                "direction": "forward",
+                                "edge_weight": round(edge_w, 4),
+                                "candidate": True,
+                                "improved": is_improved,
+                            },
+                        )
+                        if is_improved:
                             fwd_dist[neighbor] = new_cost
                             fwd_prev[neighbor] = fwd_node
                             heapq.heappush(fwd_pq, (new_cost, neighbor))
@@ -103,9 +121,26 @@ class BidirectionalDijkstraPathfinder(PathfindingAlgorithm):
                         if neighbor in bwd_visited:
                             continue
                         edge_data = reverse_graph[bwd_node][neighbor]
-                        edge_w = edge_data.get(weight, edge_data.get("distance", 1))
+                        if weight == "hybrid" and hybrid_resolver is not None:
+                            edge_w = hybrid_resolver(edge_data)
+                        else:
+                            edge_w = edge_data.get(weight, edge_data.get("distance", 1))
                         new_cost = bwd_cost + edge_w
-                        if new_cost < bwd_dist.get(neighbor, float("inf")):
+                        is_improved = new_cost < bwd_dist.get(neighbor, float("inf"))
+                        await self._stream_edge(
+                            websocket,
+                            graph,
+                            neighbor,
+                            bwd_node,
+                            new_cost,
+                            {
+                                "direction": "backward",
+                                "edge_weight": round(edge_w, 4),
+                                "candidate": True,
+                                "improved": is_improved,
+                            },
+                        )
+                        if is_improved:
                             bwd_dist[neighbor] = new_cost
                             bwd_prev[neighbor] = bwd_node
                             heapq.heappush(bwd_pq, (new_cost, neighbor))

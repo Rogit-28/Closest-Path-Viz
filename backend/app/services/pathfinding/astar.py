@@ -91,7 +91,7 @@ class AStarPathfinder(PathfindingAlgorithm):
             self._nodes_explored = 0
             return self._build_result(graph, [start], 0, 0, 0, weight)
 
-        self._begin_tracking()
+        self._begin_tracking(config)
         self._heuristic_sum = 0.0
         self._actual_cost_sum = 0.0
 
@@ -102,6 +102,7 @@ class AStarPathfinder(PathfindingAlgorithm):
         g_score = {start: 0.0}
         prev = {}
         visited = set()
+        hybrid_resolver = (config or {}).get("hybrid_resolver")
 
         while pq:
             f, _, current = heapq.heappop(pq)
@@ -144,10 +145,27 @@ class AStarPathfinder(PathfindingAlgorithm):
                 if neighbor in visited:
                     continue
                 edge_data = graph[current][neighbor]
-                edge_weight = edge_data.get(weight, edge_data.get("distance", 1))
+                if weight == "hybrid" and hybrid_resolver is not None:
+                    edge_weight = hybrid_resolver(edge_data)
+                else:
+                    edge_weight = edge_data.get(weight, edge_data.get("distance", 1))
                 tentative_g = current_g + edge_weight
+                is_improved = tentative_g < g_score.get(neighbor, float("inf"))
+                await self._stream_edge(
+                    websocket,
+                    graph,
+                    current,
+                    neighbor,
+                    tentative_g,
+                    {
+                        "edge_weight": round(edge_weight, 4),
+                        "candidate": True,
+                        "improved": is_improved,
+                        "heuristic": self.heuristic_type,
+                    },
+                )
 
-                if tentative_g < g_score.get(neighbor, float("inf")):
+                if is_improved:
                     g_score[neighbor] = tentative_g
                     prev[neighbor] = current
                     h = self._heuristic(graph, neighbor, end, weight)

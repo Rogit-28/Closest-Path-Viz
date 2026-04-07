@@ -33,11 +33,12 @@ class FloydWarshallPathfinder(PathfindingAlgorithm):
             self._nodes_explored = 0
             return self._build_result(graph, [start], 0, 0, 0, weight)
 
-        self._begin_tracking()
+        self._begin_tracking(config)
 
         nodes = list(graph.nodes())
         n = len(nodes)
         node_idx = {node: i for i, node in enumerate(nodes)}
+        hybrid_resolver = (config or {}).get("hybrid_resolver")
         
         # Initialize distance matrix
         dist = [[float("inf")] * n for _ in range(n)]
@@ -53,7 +54,10 @@ class FloydWarshallPathfinder(PathfindingAlgorithm):
             for v in graph.successors(u):
                 v_idx = node_idx[v]
                 edge_data = graph[u][v]
-                edge_weight = edge_data.get(weight, edge_data.get("distance", 1))
+                if weight == "hybrid" and hybrid_resolver is not None:
+                    edge_weight = hybrid_resolver(edge_data)
+                else:
+                    edge_weight = edge_data.get(weight, edge_data.get("distance", 1))
                 dist[u_idx][v_idx] = edge_weight
                 next_node[u_idx][v_idx] = v
 
@@ -64,6 +68,21 @@ class FloydWarshallPathfinder(PathfindingAlgorithm):
                     if dist[i][k] + dist[k][j] < dist[i][j]:
                         dist[i][j] = dist[i][k] + dist[k][j]
                         next_node[i][j] = next_node[i][k]
+                        if next_node[i][k] is not None:
+                            await self._stream_edge(
+                                websocket,
+                                graph,
+                                nodes[i],
+                                next_node[i][k],
+                                dist[i][j],
+                                {
+                                    "phase": "dynamic_programming",
+                                    "k_index": k,
+                                    "intermediate_node": nodes[k],
+                                    "candidate": True,
+                                    "improved": True,
+                                },
+                            )
                         
                         # Stream progress update for start/end pair
                         if i == node_idx[start] and j == node_idx[end]:
@@ -74,8 +93,7 @@ class FloydWarshallPathfinder(PathfindingAlgorithm):
                                 dist[i][j],
                                 {"k_index": k, "intermediate_node": nodes[k]},
                             )
-                            self._nodes_explored += 1
-            
+
             # Periodically stream frontier updates
             if (k + 1) % max(1, n // 20) == 0:
                 await self._stream_frontier(websocket, k + 1)

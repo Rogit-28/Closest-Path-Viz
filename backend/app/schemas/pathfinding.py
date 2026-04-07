@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Any
 from enum import Enum
 
 
@@ -25,6 +25,25 @@ class WeightFunction(str, Enum):
     HYBRID = "hybrid"
 
 
+class AnimationGranularity(str, Enum):
+    EVERY_NODE = "every_node"
+    EVERY_N = "every_n"
+    FRONTIER_ONLY = "frontier_only"
+
+
+class CacheScheduleType(str, Enum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    BIWEEKLY = "biweekly"
+    MONTHLY = "monthly"
+    MANUAL = "manual"
+
+
+class CachePromptBehavior(str, Enum):
+    ALWAYS_ASK = "always_ask"
+    AUTO_APPROVE = "auto_approve"
+
+
 class Coordinate(BaseModel):
     lat: float = Field(..., ge=-90, le=90, description="Latitude")
     lon: float = Field(..., ge=-180, le=180, description="Longitude")
@@ -42,14 +61,17 @@ class PathfindingConfig(BaseModel):
     k_paths: int = Field(1, ge=1, le=10)
     animation_speed: float = Field(1.0, ge=0.25, le=50.0)
     show_all_explored: bool = True
-    animation_granularity: str = "every_node"  # every_node, every_n, frontier_only
+    animation_granularity: AnimationGranularity = AnimationGranularity.EVERY_NODE
+    floyd_warshall_node_limit: int = Field(1000, ge=100, le=5000)
 
 
 class PathfindingRequest(BaseModel):
     start: Coordinate
     end: Coordinate
-    algorithms: list[AlgorithmType] = [AlgorithmType.ASTAR]
-    config: PathfindingConfig = PathfindingConfig()
+    algorithms: list[AlgorithmType] = Field(
+        default_factory=lambda: [AlgorithmType.ASTAR], min_length=1
+    )
+    config: PathfindingConfig = Field(default_factory=PathfindingConfig)
 
 
 class NodeVisitMessage(BaseModel):
@@ -60,7 +82,7 @@ class NodeVisitMessage(BaseModel):
     lon: float
     cost: float
     nodes_explored: int
-    metadata: dict = {}
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class FrontierUpdateMessage(BaseModel):
@@ -73,8 +95,8 @@ class FrontierUpdateMessage(BaseModel):
 class PathCompleteMessage(BaseModel):
     type: str = "complete"
     algorithm: str
-    path: list[dict]
-    metrics: dict
+    path: list[dict[str, Any]]
+    metrics: dict[str, Any]
 
 
 class AlgorithmMetrics(BaseModel):
@@ -84,56 +106,70 @@ class AlgorithmMetrics(BaseModel):
     computation_time_ms: float
     memory_usage_mb: float
     path_node_count: int
-    extra: dict = {}
+    extra: dict[str, Any] = Field(default_factory=dict)
 
 
 class CachedCityResponse(BaseModel):
     id: int
     name: str
-    last_updated: Optional[str] = None
+    country: str
+    lat: float
+    lon: float
+    schedule: str = "weekly"
+    last_refresh: Optional[str] = None
     next_refresh: Optional[str] = None
-    refresh_schedule: str = "weekly"
     pending_approval: bool = False
     node_count: int = 0
     edge_count: int = 0
 
 
 class CacheRefreshRequest(BaseModel):
-    city_id: int
+    city_id: int = Field(..., ge=1)
     approve: bool = True
 
 
 class CacheScheduleRequest(BaseModel):
-    city_id: int
-    schedule: str = "weekly"
-    prompt_behavior: str = "always_ask"
+    city_id: int = Field(..., ge=1)
+    schedule: CacheScheduleType = CacheScheduleType.WEEKLY
+    prompt_behavior: CachePromptBehavior = CachePromptBehavior.ALWAYS_ASK
+
+
+class UserPathfindingSettings(BaseModel):
+    default_algorithm: AlgorithmType = AlgorithmType.ASTAR
+    astar_heuristic: HeuristicType = HeuristicType.HAVERSINE
+    weight_function: WeightFunction = WeightFunction.DISTANCE
+    k_paths: int = Field(1, ge=1, le=10)
+    show_all_explored: bool = True
+    floyd_warshall_node_limit: int = Field(1000, ge=100, le=5000)
+
+
+class UserVisualizationSettings(BaseModel):
+    animation_speed: float = Field(1.0, ge=0.25, le=50.0)
+    animation_granularity: AnimationGranularity = AnimationGranularity.EVERY_NODE
+    color_scheme: str = "default"
+
+
+class UserCacheSettings(BaseModel):
+    refresh_schedule: CacheScheduleType = CacheScheduleType.WEEKLY
+    prompt_on_refresh: bool = True
+    auto_approve_after_days: int = Field(7, ge=1, le=365)
+    defer_max_days: int = Field(7, ge=1, le=365)
 
 
 class UserSettingsSchema(BaseModel):
-    pathfinding: dict = {
-        "default_algorithm": "astar",
-        "astar_heuristic": "haversine",
-        "weight_function": "distance",
-        "k_paths": 1,
-        "show_all_explored": True,
-    }
-    visualization: dict = {
-        "animation_speed": 1.0,
-        "animation_granularity": "every_node",
-        "color_scheme": "default",
-    }
-    cache: dict = {
-        "refresh_schedule": "weekly",
-        "prompt_on_refresh": True,
-        "auto_approve_after_days": 7,
-        "defer_max_days": 7,
-    }
+    pathfinding: UserPathfindingSettings = Field(
+        default_factory=UserPathfindingSettings
+    )
+    visualization: UserVisualizationSettings = Field(
+        default_factory=UserVisualizationSettings
+    )
+    cache: UserCacheSettings = Field(default_factory=UserCacheSettings)
 
 
 class GraphInfoResponse(BaseModel):
     city_name: str
     node_count: int
     edge_count: int
-    bbox: dict
+    bbox: dict[str, float]
     fallback_speed_pct: float
     is_cached: bool

@@ -32,12 +32,13 @@ class BellmanFordPathfinder(PathfindingAlgorithm):
             self._nodes_explored = 0
             return self._build_result(graph, [start], 0, 0, 0, weight)
 
-        self._begin_tracking()
+        self._begin_tracking(config)
 
         # Initialize distances and predecessors
         dist = {node: float("inf") for node in graph.nodes()}
         dist[start] = 0.0
         prev = {}
+        hybrid_resolver = (config or {}).get("hybrid_resolver")
 
         # Relax edges up to V-1 times
         num_nodes = len(graph.nodes())
@@ -50,10 +51,28 @@ class BellmanFordPathfinder(PathfindingAlgorithm):
                 
                 for v in graph.successors(u):
                     edge_data = graph[u][v]
-                    edge_weight = edge_data.get(weight, edge_data.get("distance", 1))
-                    
-                    if dist[u] + edge_weight < dist[v]:
-                        dist[v] = dist[u] + edge_weight
+                    if weight == "hybrid" and hybrid_resolver is not None:
+                        edge_weight = hybrid_resolver(edge_data)
+                    else:
+                        edge_weight = edge_data.get(weight, edge_data.get("distance", 1))
+                    candidate_cost = dist[u] + edge_weight
+                    is_improved = candidate_cost < dist[v]
+                    await self._stream_edge(
+                        websocket,
+                        graph,
+                        u,
+                        v,
+                        candidate_cost,
+                        {
+                            "iteration": iteration,
+                            "edge_weight": round(edge_weight, 4),
+                            "candidate": True,
+                            "improved": is_improved,
+                        },
+                    )
+
+                    if is_improved:
+                        dist[v] = candidate_cost
                         prev[v] = u
                         edges_relaxed += 1
                         
@@ -65,7 +84,6 @@ class BellmanFordPathfinder(PathfindingAlgorithm):
                             dist[v],
                             {"iteration": iteration, "edges_relaxed": edges_relaxed},
                         )
-                        self._nodes_explored += 1
             
             # Stream frontier update
             if self._nodes_explored % 100 == 0:
@@ -85,7 +103,10 @@ class BellmanFordPathfinder(PathfindingAlgorithm):
             
             for v in graph.successors(u):
                 edge_data = graph[u][v]
-                edge_weight = edge_data.get(weight, edge_data.get("distance", 1))
+                if weight == "hybrid" and hybrid_resolver is not None:
+                    edge_weight = hybrid_resolver(edge_data)
+                else:
+                    edge_weight = edge_data.get(weight, edge_data.get("distance", 1))
                 
                 if dist[u] + edge_weight < dist[v]:
                     negative_cycle_detected = True

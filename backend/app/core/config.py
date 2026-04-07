@@ -1,5 +1,4 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -7,6 +6,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Pathfinding Visualization Platform"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
+    LOG_LEVEL: str = "INFO"
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
@@ -33,9 +33,6 @@ class Settings(BaseSettings):
     # WebSocket
     WS_HEARTBEAT_INTERVAL: int = 30
     WS_MAX_CONNECTIONS: int = 100
-
-    # Mapbox (passed to frontend)
-    MAPBOX_TOKEN: Optional[str] = None
 
     # CORS
     CORS_ORIGINS: list[str] = [

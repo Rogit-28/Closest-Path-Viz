@@ -12,6 +12,7 @@ from pathlib import Path
 
 import networkx as nx
 import numpy as np
+import asyncio
 
 try:
     import osmnx as ox
@@ -19,6 +20,7 @@ except ImportError:
     ox = None
 
 from app.core.config import settings
+from app.core.metrics import metrics
 
 logger = logging.getLogger("pathfinding.graph")
 
@@ -119,13 +121,17 @@ class GraphService:
         Get or build a graph for the region around the given coordinates.
         Returns (graph, metadata).
         """
+        load_start = time.perf_counter()
+
         if radius_km is None:
             radius_km = settings.DEFAULT_GRAPH_RADIUS_KM
 
-        cache_key = f"{center_lat:.4f}_{center_lon:.4f}_{radius_km}"
+        cache_key = f"{center_lat:.4f}_{center_lon:.4f}_{radius_km:.4f}"
 
         if cache_key in self._graph_cache:
             logger.info(f"Graph cache hit: {cache_key}")
+            load_time_ms = (time.perf_counter() - load_start) * 1000
+            metrics.record_graph_load(load_time_ms, cache_hit=True)
             return self._graph_cache[cache_key], self._graph_metadata[cache_key]
 
         # Check file cache
@@ -135,6 +141,8 @@ class GraphService:
             graph, metadata = self._load_graph_from_file(file_path)
             self._graph_cache[cache_key] = graph
             self._graph_metadata[cache_key] = metadata
+            load_time_ms = (time.perf_counter() - load_start) * 1000
+            metrics.record_graph_load(load_time_ms, cache_hit=True)
             return graph, metadata
 
         # Fetch from OSM
@@ -150,6 +158,9 @@ class GraphService:
 
         # Save to file cache
         self._save_graph_to_file(graph, metadata, file_path)
+
+        load_time_ms = (time.perf_counter() - load_start) * 1000
+        metrics.record_graph_load(load_time_ms, cache_hit=False)
 
         return graph, metadata
 
@@ -181,7 +192,8 @@ class GraphService:
 
         if ox is not None:
             try:
-                G = ox.graph_from_point(
+                G = await asyncio.to_thread(
+                    ox.graph_from_point,
                     (center_lat, center_lon),
                     dist=radius_m,
                     network_type="drive",
@@ -200,7 +212,8 @@ class GraphService:
         """Fetch OSM data for a bounding box."""
         if ox is not None:
             try:
-                G = ox.graph_from_bbox(
+                G = await asyncio.to_thread(
+                    ox.graph_from_bbox,
                     bbox=(north, south, east, west),
                     network_type="drive",
                     simplify=True,
@@ -256,6 +269,15 @@ class GraphService:
                 if speed_kmh > 0
                 else float("inf")
             )
+            geometry_coords = None
+            raw_geometry = data.get("geometry")
+            if raw_geometry is not None:
+                try:
+                    geometry_coords = [
+                        [float(x), float(y)] for x, y in list(raw_geometry.coords)
+                    ]
+                except Exception:
+                    geometry_coords = None
 
             graph.add_edge(
                 str(u),
@@ -266,6 +288,7 @@ class GraphService:
                 highway=data.get("highway", "unknown"),
                 name=data.get("name", ""),
                 used_fallback=used_fallback,
+                geometry=geometry_coords,
             )
 
         processing_time = time.time() - start_time
@@ -350,6 +373,10 @@ class GraphService:
                         highway="synthetic",
                         name="",
                         used_fallback=False,
+                        geometry=[
+                            [u_data["lon"], u_data["lat"]],
+                            [v_data["lon"], v_data["lat"]],
+                        ],
                     )
 
         metadata = {
@@ -378,6 +405,7 @@ class GraphService:
                     "speed_kmh": d.get("speed_kmh", 30),
                     "highway": d.get("highway", ""),
                     "name": d.get("name", ""),
+                    "geometry": d.get("geometry"),
                 }
                 for u, v, d in graph.edges(data=True)
             ],
@@ -414,6 +442,63 @@ class GraphService:
                 min_dist = d
                 nearest = nid
         return nearest
+
+    def shortest_path_hops(self, graph: nx.DiGraph, start: str, end: str) -> list[str]:
+        """Compute an unweighted path for endpoint-aware subgraph extraction."""
+        try:
+            return nx.shortest_path(graph, source=start, target=end)
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            return []
+
+    def get_endpoint_subgraph(
+        self, graph: nx.DiGraph, start: str, end: str, max_nodes: int
+    ) -> tuple[nx.DiGraph, dict]:
+        """
+        Build a Floyd-safe subgraph that always contains start/end and path corridor.
+        Returns (subgraph, metadata).
+        """
+        if graph.number_of_nodes() <= max_nodes:
+            return graph, {"used_subgraph": False, "node_limit": max_nodes}
+
+        if start not in graph or end not in graph:
+            raise ValueError("Start or end node is not present in graph")
+
+        path_nodes = self.shortest_path_hops(graph, start, end)
+        selected = set(path_nodes[:max_nodes])
+        frontier = set(path_nodes[:max_nodes])
+
+        if start not in selected:
+            selected.add(start)
+            frontier.add(start)
+        if end not in selected and len(selected) < max_nodes:
+            selected.add(end)
+            frontier.add(end)
+
+        while len(selected) < max_nodes and frontier:
+            current = frontier.pop()
+            neighbors = list(graph.successors(current)) + list(
+                graph.predecessors(current)
+            )
+            for neighbor in neighbors:
+                if neighbor in selected:
+                    continue
+                selected.add(neighbor)
+                frontier.add(neighbor)
+                if len(selected) >= max_nodes:
+                    break
+
+        if start not in selected or end not in selected:
+            raise ValueError(
+                "Unable to build endpoint-aware Floyd-Warshall subgraph under node limit"
+            )
+
+        return graph.subgraph(selected).copy(), {
+            "used_subgraph": True,
+            "node_limit": max_nodes,
+            "selected_nodes": len(selected),
+            "full_nodes": graph.number_of_nodes(),
+            "path_seed_nodes": len(path_nodes),
+        }
 
     def get_subgraph(self, graph: nx.DiGraph, max_nodes: int) -> nx.DiGraph:
         """Get a subgraph with at most max_nodes nodes (for Floyd-Warshall)."""

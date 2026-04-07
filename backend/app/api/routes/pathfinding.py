@@ -10,13 +10,83 @@ from fastapi import APIRouter, HTTPException, Query
 from app.schemas.pathfinding import (
     AlgorithmType,
     PathfindingRequest,
-    AlgorithmMetrics,
 )
 from app.services.pathfinding.engine import run_pathfinding, run_multi_pathfinding
 from app.services.graph.graph_service import graph_service
+from app.services.pathfinding.serialization import (
+    finite_or_none,
+    sanitize_for_json,
+    serialize_result_payload,
+)
 
 
 router = APIRouter(prefix="/api/pathfinding", tags=["pathfinding"])
+
+
+def _resolve_start_end_or_zero(
+    graph,
+    start_lat: float,
+    start_lon: float,
+    end_lat: float,
+    end_lon: float,
+):
+    start_node = graph_service.find_nearest_node(graph, start_lat, start_lon)
+    end_node = graph_service.find_nearest_node(graph, end_lat, end_lon)
+    if start_node is None or end_node is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not find nodes near the specified coordinates",
+        )
+    return start_node, end_node
+
+
+def _build_zero_path_result(
+    algorithm: str, start_node: str, start_lat: float, start_lon: float
+) -> dict:
+    return {
+        "algorithm": algorithm,
+        "requested_algorithm": algorithm,
+        "executed_algorithm": algorithm,
+        "path": [{"node_id": start_node, "lat": start_lat, "lon": start_lon}],
+        "path_geometry": [],
+        "cost": 0.0,
+        "path_length_km": 0.0,
+        "nodes_explored": 1,
+        "computation_time_ms": 0.0,
+        "memory_usage_mb": 0.0,
+        "success": True,
+        "error": None,
+        "extra": {
+            "reason": "start_equals_end",
+            "requested_algorithm": algorithm,
+            "executed_algorithm": algorithm,
+        },
+    }
+
+
+def _build_failed_path_result(
+    algorithm: str, error: str, *, executed_algorithm: str | None = None
+) -> dict:
+    executed = executed_algorithm or algorithm
+    return {
+        "algorithm": algorithm,
+        "requested_algorithm": algorithm,
+        "executed_algorithm": executed,
+        "path": [],
+        "path_geometry": [],
+        "cost": None,
+        "path_length_km": 0.0,
+        "nodes_explored": 0,
+        "computation_time_ms": 0.0,
+        "memory_usage_mb": 0.0,
+        "success": False,
+        "error": error,
+        "extra": {
+            "reason": "execution_failed",
+            "requested_algorithm": algorithm,
+            "executed_algorithm": executed,
+        },
+    }
 
 
 @router.post("/find-path")
@@ -34,24 +104,29 @@ async def find_path(request: PathfindingRequest) -> dict:
             center_lat, center_lon
         )
 
-        start_node = graph_service.find_nearest_node(
-            graph, request.start.lat, request.start.lon
+        start_node, end_node = _resolve_start_end_or_zero(
+            graph,
+            request.start.lat,
+            request.start.lon,
+            request.end.lat,
+            request.end.lon,
         )
-        end_node = graph_service.find_nearest_node(
-            graph, request.end.lat, request.end.lon
-        )
-
-        if start_node is None or end_node is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Could not find nodes near the specified coordinates",
-            )
 
         if start_node == end_node:
-            raise HTTPException(
-                status_code=400,
-                detail="Start and end resolve to the same node. Try further apart points.",
-            )
+            return {
+                "start": request.start.model_dump(),
+                "end": request.end.model_dump(),
+                "graph_info": metadata,
+                "warnings": [
+                    "Start and end resolve to same node; returning zero-cost path."
+                ],
+                "results": [
+                    _build_zero_path_result(
+                        algo.value, start_node, request.start.lat, request.start.lon
+                    )
+                    for algo in request.algorithms
+                ],
+            }
 
         results = await run_multi_pathfinding(
             graph,
@@ -68,25 +143,44 @@ async def find_path(request: PathfindingRequest) -> dict:
             "graph_info": metadata,
             "results": [
                 {
-                    "algorithm": r.algorithm,
-                    "path": r.path_coords,
-                    "cost": r.cost,
-                    "path_length_km": r.path_length_km,
-                    "nodes_explored": r.nodes_explored,
-                    "computation_time_ms": r.computation_time_ms,
-                    "memory_usage_mb": r.memory_usage_mb,
-                    "success": r.success,
-                    "error": r.error,
-                    "extra": r.extra,
+                    "algorithm": payload["algorithm"],
+                    "requested_algorithm": payload["requested_algorithm"],
+                    "executed_algorithm": payload["executed_algorithm"],
+                    "path": payload["path"],
+                    "path_geometry": payload["path_geometry"],
+                    "cost": payload["metrics"]["cost"],
+                    "path_length_km": payload["metrics"]["path_length_km"],
+                    "nodes_explored": payload["metrics"]["nodes_explored"],
+                    "computation_time_ms": payload["metrics"]["computation_time_ms"],
+                    "memory_usage_mb": payload["metrics"]["memory_usage_mb"],
+                    "success": payload["success"],
+                    "error": payload["error"],
+                    "extra": payload["metrics"]["extra"],
                 }
-                for r in results
+                for payload in (
+                    serialize_result_payload(
+                        r,
+                        requested_algorithm=request.algorithms[i].value,
+                        executed_algorithm=r.algorithm,
+                    )
+                    for i, r in enumerate(results)
+                )
             ],
         }
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        return {
+            "start": request.start.model_dump(),
+            "end": request.end.model_dump(),
+            "graph_info": None,
+            "results": [
+                _build_failed_path_result(algo.value, "Failed to compute path.")
+                for algo in request.algorithms
+            ],
+            "warnings": ["Pathfinding failed before completion."],
+        }
 
 
 @router.get("/algorithms")
@@ -175,16 +269,18 @@ async def benchmark_algorithms(
         graph, metadata = await graph_service.get_graph_for_region(
             center_lat, center_lon
         )
-        start_node = graph_service.find_nearest_node(
-            graph, request.start.lat, request.start.lon
-        )
-        end_node = graph_service.find_nearest_node(
-            graph, request.end.lat, request.end.lon
+        start_node, end_node = _resolve_start_end_or_zero(
+            graph,
+            request.start.lat,
+            request.start.lon,
+            request.end.lat,
+            request.end.lon,
         )
 
-        if start_node is None or end_node is None:
+        if start_node == end_node:
             raise HTTPException(
-                status_code=400, detail="Could not find nodes near coordinates"
+                status_code=400,
+                detail="Benchmark requires distinct start and end nodes.",
             )
 
         benchmarks = {}
@@ -228,8 +324,8 @@ async def benchmark_algorithms(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to benchmark algorithms.")
 
 
 @router.get("/compare")
@@ -244,7 +340,7 @@ async def compare_algorithms(
 ) -> dict:
     """Compare multiple algorithms on a single path query."""
     try:
-        from app.schemas.pathfinding import Coordinate, PathfindingConfig
+        from app.schemas.pathfinding import PathfindingConfig
 
         algorithm_list = [a.strip() for a in algorithms.split(",")]
         algo_types = []
@@ -262,13 +358,31 @@ async def compare_algorithms(
             center_lat, center_lon
         )
 
-        start_node = graph_service.find_nearest_node(graph, lat1, lon1)
-        end_node = graph_service.find_nearest_node(graph, lat2, lon2)
+        start_node, end_node = _resolve_start_end_or_zero(graph, lat1, lon1, lat2, lon2)
 
-        if start_node is None or end_node is None:
-            raise HTTPException(
-                status_code=400, detail="Could not find nodes near coordinates"
-            )
+        if start_node == end_node:
+            return {
+                "start": {"lat": lat1, "lon": lon1},
+                "end": {"lat": lat2, "lon": lon2},
+                "graph_info": metadata,
+                "warnings": [
+                    "Start and end resolve to same node; returning zero-cost path."
+                ],
+                "algorithms": algorithm_list,
+                "comparison": [
+                    {
+                        "algorithm": algo.value,
+                        "nodes_explored": 1,
+                        "computation_time_ms": 0.0,
+                        "memory_usage_mb": 0.0,
+                        "path_length_km": 0.0,
+                        "cost": 0.0,
+                        "success": True,
+                        "error": None,
+                    }
+                    for algo in algo_types
+                ],
+            }
 
         config = PathfindingConfig()
         results = await run_multi_pathfinding(
@@ -279,14 +393,25 @@ async def compare_algorithms(
         for r in results:
             comparison.append(
                 {
-                    "algorithm": r.algorithm,
+                    "requested_algorithm": r.extra.get(
+                        "requested_algorithm", r.algorithm
+                    )
+                    if r.extra
+                    else r.algorithm,
+                    "executed_algorithm": r.extra.get("executed_algorithm", r.algorithm)
+                    if r.extra
+                    else r.algorithm,
+                    "algorithm": r.extra.get("requested_algorithm", r.algorithm)
+                    if r.extra
+                    else r.algorithm,
                     "nodes_explored": r.nodes_explored,
                     "computation_time_ms": r.computation_time_ms,
                     "memory_usage_mb": r.memory_usage_mb,
                     "path_length_km": r.path_length_km,
-                    "cost": r.cost,
+                    "cost": finite_or_none(r.cost),
                     "success": r.success,
                     "error": r.error,
+                    "extra": sanitize_for_json(r.extra or {}),
                 }
             )
 
@@ -300,5 +425,5 @@ async def compare_algorithms(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to compare algorithms.")
