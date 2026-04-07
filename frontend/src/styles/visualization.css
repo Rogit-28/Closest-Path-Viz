@@ -32,3 +32,70 @@
 .marker-pulse {
   animation: marker-pulse 2s infinite;
 }
+
+/* User location marker */
+.user-location-marker {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+
+.user-location-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  background-color: #3b82f6;
+  border: 2px solid white;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+}
+
+.user-location-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  background-color: rgba(59, 130, 246, 0.3);
+  border-radius: 50%;
+  animation: user-location-pulse 2s ease-out infinite;
+  z-index: 1;
+}
+
+@keyframes user-location-pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+/* Current node marker (pathfinding animation) */
+.map-current-node {
+  width: 16px;
+  height: 16px;
+  background-color: #ef4444;
+  border: 2px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+  animation: current-node-pulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes current-node-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+  }
+  100% {
+    transform: scale(1.2);
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.8);
+  }
+}

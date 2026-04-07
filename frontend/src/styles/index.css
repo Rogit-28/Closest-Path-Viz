@@ -1,62 +1,164 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-display: 'Inter', 'Segoe UI', sans-serif;
+  --font-body: 'Inter', 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+
+  /* Pure blacks - no blue tint */
+  --bg-base: #000000;
+  --bg-elevated: #0a0a0a;
+  --bg-surface: #141414;
+  --bg-subtle: #1a1a1a;
+
+  /* Text */
+  --ink-primary: #fafafa;
+  --ink-secondary: #a3a3a3;
+  --ink-muted: #525252;
+
+  /* Borders */
+  --line-default: #262626;
+  --line-subtle: #1f1f1f;
+
+  /* Red accent - used sparingly */
+  --accent: #dc2626;
+  --accent-hover: #ef4444;
+  --accent-muted: #7f1d1d;
+
+  color-scheme: dark;
   line-height: 1.5;
   font-weight: 400;
-  color-scheme: dark;
+  font-family: var(--font-body);
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  color: var(--ink-primary);
+  background: var(--bg-base);
 }
 
 #root {
+  position: relative;
+  isolation: isolate;
   width: 100%;
   height: 100vh;
   display: flex;
 }
 
-/* Mapbox overrides for dark theme */
-.mapboxgl-popup-content {
-  background: #1e293b !important;
-  color: #e2e8f0 !important;
-  border-radius: 8px !important;
-  padding: 12px !important;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4) !important;
+.app-shell {
+  position: relative;
 }
 
-.mapboxgl-popup-tip {
-  border-top-color: #1e293b !important;
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 
-.mapboxgl-ctrl-group {
-  background: #1e293b !important;
-  border-color: #334155 !important;
+.font-ui-mono {
+  font-family: var(--font-mono);
 }
 
-.mapboxgl-ctrl-group button {
-  filter: invert(1);
+/* Flat panel - no gradients */
+.glass-panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--line-default);
 }
 
-/* Custom scrollbar */
+.glass-panel-strong {
+  background: var(--bg-base);
+  border: 1px solid var(--line-default);
+}
+
+/* MapLibre overrides */
+.maplibregl-popup-content {
+  background: var(--bg-elevated) !important;
+  color: var(--ink-primary) !important;
+  border-radius: 0.5rem !important;
+  border: 1px solid var(--line-default) !important;
+  padding: 0.75rem !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: var(--bg-elevated) !important;
+}
+
+.maplibregl-ctrl-group {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--line-default) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 0.375rem !important;
+}
+
+.maplibregl-ctrl-group button {
+  background: transparent !important;
+  color: var(--ink-secondary) !important;
+}
+
+.maplibregl-ctrl-group button:hover {
+  color: var(--ink-primary) !important;
+}
+
+.map-current-node {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ef4444;
+  border-radius: 9999px;
+  background: rgba(220, 38, 38, 0.18);
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
+  animation: map-current-pulse 1.1s ease-out infinite;
+}
+
+@keyframes map-current-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
+    transform: scale(1);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(239, 68, 68, 0);
+    transform: scale(1.08);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    transform: scale(1);
+  }
+}
+
+/* Minimal scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
+  background: var(--line-default);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #404040;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

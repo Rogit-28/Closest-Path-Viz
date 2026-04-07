@@ -1,6 +1,6 @@
 /** Shared types for the pathfinding visualization platform. */
 
-export type AlgorithmType = 'dijkstra' | 'astar' | 'bidirectional' | 'bellman_ford' | 'floyd_warshall';
+export type AlgorithmType = 'dijkstra' | 'astar' | 'bidirectional' | 'bellman_ford' | 'floyd_warshall' | 'yens_k_shortest';
 export type HeuristicType = 'haversine' | 'manhattan' | 'euclidean' | 'zero';
 export type WeightFunction = 'distance' | 'time' | 'hybrid';
 export type AnimationGranularity = 'every_node' | 'every_n' | 'frontier_only';
@@ -23,6 +23,7 @@ export interface PathfindingConfig {
   animation_speed: number;
   show_all_explored: boolean;
   animation_granularity: AnimationGranularity;
+  floyd_warshall_node_limit?: number; // 1000-5000
 }
 
 export interface PathfindingRequest {
@@ -40,8 +41,11 @@ export interface NodeCoord {
 
 export interface AlgorithmResult {
   algorithm: string;
+  requested_algorithm: string;
+  executed_algorithm: string;
   path: NodeCoord[];
-  cost: number;
+  path_geometry?: number[][];
+  cost: number | null;
   path_length_km: number;
   nodes_explored: number;
   computation_time_ms: number;
@@ -52,11 +56,12 @@ export interface AlgorithmResult {
 }
 
 export interface AlgorithmMetrics {
-  algorithm: string;
+  algorithm?: string;
   nodes_explored: number;
   path_length_km: number;
   computation_time_ms: number;
   memory_usage_mb: number;
+  cost: number | null;
   path_node_count: number;
   extra: Record<string, unknown>;
 }
@@ -73,6 +78,21 @@ export interface WsNodeVisit {
   metadata: Record<string, unknown>;
 }
 
+export interface WsEdgeExplore {
+  type: 'edge_explore';
+  algorithm: string;
+  from_node_id: string;
+  to_node_id: string;
+  from_lat: number;
+  from_lon: number;
+  to_lat: number;
+  to_lon: number;
+  cost: number;
+  nodes_explored: number;
+  geometry?: number[][];
+  metadata: Record<string, unknown>;
+}
+
 export interface WsFrontierUpdate {
   type: 'frontier_update';
   algorithm: string;
@@ -83,7 +103,10 @@ export interface WsFrontierUpdate {
 export interface WsComplete {
   type: 'complete';
   algorithm: string;
+  requested_algorithm: string;
+  executed_algorithm: string;
   path: NodeCoord[];
+  path_geometry?: number[][];
   metrics: AlgorithmMetrics;
   success: boolean;
   error: string | null;
@@ -108,14 +131,23 @@ export interface WsAllComplete {
   type: 'all_complete';
 }
 
+export interface WsWarning {
+  type: 'warning';
+  algorithm?: string;
+  message: string;
+}
+
 export type WsMessage =
   | WsNodeVisit
+  | WsEdgeExplore
   | WsFrontierUpdate
   | WsComplete
   | WsGraphInfo
   | WsAlgorithmStart
   | WsAllComplete
-  | { type: 'error'; message: string };
+  | WsWarning
+  | { type: 'error'; message: string }
+  | { type: 'loading'; message: string };
 
 // Constants for UI
 export const ALGORITHM_COLORS: Record<string, string> = {
@@ -124,6 +156,7 @@ export const ALGORITHM_COLORS: Record<string, string> = {
   bidirectional: '#45B7D1',
   bellman_ford: '#FFA07A',
   floyd_warshall: '#98D8C8',
+  yens_k_shortest: '#DDA0DD',
 };
 
 export const ALGORITHM_NAMES: Record<AlgorithmType, string> = {
@@ -132,6 +165,7 @@ export const ALGORITHM_NAMES: Record<AlgorithmType, string> = {
   bidirectional: 'Bidirectional',
   bellman_ford: 'Bellman-Ford',
   floyd_warshall: 'Floyd-Warshall',
+  yens_k_shortest: "Yen's K-Shortest",
 };
 
 // User settings — mirrors backend UserSettingsSchema
@@ -141,6 +175,7 @@ export interface UserSettingsPathfinding {
   weight_function: WeightFunction;
   k_paths: number;
   show_all_explored: boolean;
+  floyd_warshall_node_limit?: number;
 }
 
 export interface UserSettingsVisualization {

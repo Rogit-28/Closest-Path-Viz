@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements and install Python dependencies
 COPY backend/requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Frontend builder
 FROM node:20-alpine as frontend-builder
@@ -40,8 +40,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python dependencies from builder
-COPY --from=backend-builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
+COPY --from=backend-builder /usr/local /usr/local
 
 # Copy backend
 COPY backend/app ./app
@@ -52,6 +51,7 @@ COPY --from=frontend-builder /app/dist ./frontend/dist
 
 # Create non-root user
 RUN useradd -m appuser
+RUN chown -R appuser:appuser /app
 USER appuser
 
 # Expose port

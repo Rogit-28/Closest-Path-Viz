@@ -33,7 +33,7 @@ Interactive web application demonstrating shortest path algorithms (A*, Dijkstra
 - Atomic cache replacement (delete old → fetch new)
 
 **Service 4: Frontend (React + TypeScript)**
-- Mapbox GL JS for map rendering
+- MapLibre GL JS for map rendering
 - WebSocket client for animation state
 - Algorithm comparison UI with side-by-side metrics
 - User settings panel for algorithm parameters
@@ -192,7 +192,7 @@ When speed limit or road type data is unavailable:
 
 **Frontend:**
 - React 18 + TypeScript
-- Mapbox GL JS (map rendering)
+- MapLibre GL JS (map rendering)
 - WebSocket client (native WebSocket API)
 - Recharts (metrics visualization)
 - Tailwind CSS (styling)
@@ -380,7 +380,7 @@ POST /api/cache/schedule
 - PostgreSQL + PostGIS + Redis setup
 - OSM Overpass API integration
 - Graph extraction pipeline (`osmnx` → NetworkX)
-- Basic map rendering (Mapbox GL JS)
+- Basic map rendering (MapLibre GL JS)
 
 ### Pathfinding Engine
 - Algorithm abstract base class

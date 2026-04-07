@@ -2,14 +2,14 @@
 
 Real-time pathfinding algorithm visualization on OpenStreetMap road networks. Compare Dijkstra, A\*, Bidirectional Search, Bellman-Ford, and Floyd-Warshall side-by-side with animated node exploration, interactive maps, and performance metrics.
 
-![Tech Stack](https://img.shields.io/badge/React_18-TypeScript-blue) ![Backend](https://img.shields.io/badge/FastAPI-Python-green) ![Map](https://img.shields.io/badge/Mapbox_GL-JS-purple)
+![Tech Stack](https://img.shields.io/badge/React_18-TypeScript-blue) ![Backend](https://img.shields.io/badge/FastAPI-Python-green) ![Map](https://img.shields.io/badge/MapLibre_GL_JS-purple)
 
 ## Features
 
 - **5 Pathfinding Algorithms** — Dijkstra, A\*, Bidirectional Dijkstra, Bellman-Ford, Floyd-Warshall
-- **Real-time Visualization** — WebSocket-streamed node-by-node exploration with animated rendering
+- **Real-time Visualization** — WebSocket-streamed junction + street exploration (node visits + outgoing edge candidates) with animated rendering
 - **Algorithm Comparison** — Run multiple algorithms simultaneously with radar charts and metrics tables
-- **Interactive Map** — Click to set start/end points on a Mapbox GL dark-theme map
+- **Interactive Map** — Click to set start/end points on a MapLibre dark-theme map (OpenStreetMap + CARTO tiles)
 - **Configurable Parameters** — Heuristic functions (Haversine, Manhattan, Euclidean), weight functions (distance, time, hybrid), K-shortest paths
 - **Metrics Dashboard** — Computation time, nodes explored, path length, memory usage with Recharts bar charts
 - **Settings Panel** — Full user preferences for pathfinding defaults, visualization speed, and cache management
@@ -21,7 +21,7 @@ Real-time pathfinding algorithm visualization on OpenStreetMap road networks. Co
 ```
 ┌────────────────────────────────────────────────────────────┐
 │  Frontend (React 18 + TypeScript + Vite)                   │
-│  ├── Mapbox GL JS — map rendering + GeoJSON layers         │
+│  ├── MapLibre GL JS — map rendering + GeoJSON layers       │
 │  ├── Zustand — global state management                     │
 │  ├── Recharts — metrics bar charts + radar comparison      │
 │  ├── Tailwind CSS — dark theme UI                          │
@@ -54,7 +54,7 @@ Real-time pathfinding algorithm visualization on OpenStreetMap road networks. Co
 ### Prerequisites
 
 - **Node.js** 18+ and npm
-- **Python** 3.11+
+- **Python** 3.11 (recommended)
 - **Docker & Docker Compose** (optional, for full stack)
 
 ### Frontend
@@ -65,7 +65,9 @@ npm install
 npm run dev
 ```
 
-The frontend runs at `http://localhost:5173` and works standalone — click anywhere on the map to set start/end points, select algorithms, and run pathfinding. Without the backend, it operates in demo mode.
+The frontend runs at `http://localhost:5173`.
+Map rendering is tokenless by default via MapLibre + OpenStreetMap/CARTO raster tiles.
+Without the backend, the map still renders but pathfinding requests will show connection/errors.
 
 ### Backend
 
@@ -78,14 +80,16 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 API docs available at `http://localhost:8000/docs`.
+For real-road routing fidelity (not synthetic fallback), ensure `osmnx` installs successfully in the backend environment.
 
 ### Docker (Full Stack)
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 This starts PostgreSQL+PostGIS, Redis, the FastAPI backend, and Nginx.
+The Postgres service is internal to the Compose network (no host DB port binding by default).
 
 ## Configuration
 
@@ -94,10 +98,10 @@ Copy `backend/.env.example` to `backend/.env` and configure:
 ```env
 DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/pathfinding
 REDIS_URL=redis://localhost:6379/0
-MAPBOX_TOKEN=your_mapbox_token_here
 ```
 
 The backend gracefully degrades — it starts without PostgreSQL or Redis, falling back to in-memory storage.
+When OSM fetch fails or `osmnx` is missing, the app falls back to a synthetic graph and now surfaces an in-app warning. In that mode, routes may not follow real streets.
 
 ## API Endpoints
 
@@ -107,11 +111,12 @@ The backend gracefully degrades — it starts without PostgreSQL or Redis, falli
 | `GET` | `/api/pathfinding/algorithms` | List available algorithms |
 | `POST` | `/api/pathfinding/benchmark` | Benchmark algorithms with N iterations |
 | `GET` | `/api/pathfinding/compare` | Compare algorithm performance |
-| `WS` | `/ws/pathfinding` | WebSocket for real-time node streaming |
+| `WS` | `/ws/pathfinding` | WebSocket for real-time node + edge exploration streaming + geometry-aware final paths |
 | `GET` | `/api/cache/cities` | List cached cities |
-| `POST` | `/api/cache/cities/{id}/refresh` | Refresh a city's graph cache |
-| `GET` | `/api/settings` | Get user settings |
-| `PUT` | `/api/settings` | Update user settings |
+| `POST` | `/api/cache/refresh` | Refresh/defer a city cache by id |
+| `POST` | `/api/cache/schedule` | Set a city's cache schedule |
+| `GET` | `/api/user/settings` | Get user settings |
+| `PUT` | `/api/user/settings` | Update user settings |
 | `GET` | `/health` | Health check |
 | `GET` | `/api/config` | Frontend configuration |
 
@@ -132,7 +137,7 @@ The backend gracefully degrades — it starts without PostgreSQL or Redis, falli
 ├── frontend/
 │   ├── src/
 │   │   ├── components/       # React components
-│   │   │   ├── MapView.tsx          # Mapbox GL map with GeoJSON layers
+│   │   │   ├── MapView.tsx          # MapLibre GL map with GeoJSON layers
 │   │   │   ├── ControlPanel.tsx     # Algorithm selection + config sidebar
 │   │   │   ├── AnimationControls.tsx # Play/pause/speed floating bar
 │   │   │   ├── MetricsDashboard.tsx  # Results + Recharts bar charts
@@ -174,6 +179,13 @@ The backend gracefully degrades — it starts without PostgreSQL or Redis, falli
 ```bash
 cd backend
 pytest tests/ -v --cov=app
+```
+
+Run a single test:
+
+```bash
+cd backend
+pytest tests/unit/test_algorithms.py::test_dijkstra_simple_path -v
 ```
 
 ## License

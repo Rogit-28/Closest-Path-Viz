@@ -37,7 +37,9 @@ async function request<T>(
 export async function findPath(req: PathfindingRequest): Promise<{
   start: { lat: number; lon: number };
   end: { lat: number; lon: number };
-  results: AlgorithmResult[];
+  graph_info?: Record<string, unknown>;
+  warnings?: string[];
+  results: Array<AlgorithmResult & { path_geometry?: number[][] }>;
 }> {
   return request('/pathfinding/find-path', {
     method: 'POST',
@@ -77,7 +79,6 @@ export async function compareAlgorithms(
 // ─── Config ───────────────────────────────────────────────────
 
 export async function getFrontendConfig(): Promise<{
-  mapbox_token: string;
   ws_url: string;
   floyd_warshall_node_limit: number;
   fallback_warning_threshold: number;
@@ -133,6 +134,76 @@ export async function setCacheSchedule(
       prompt_behavior: promptBehavior,
     }),
   });
+}
+
+/**
+ * Warm the cache for a region. This triggers background fetching of the road
+ * network graph if not already cached. Fire-and-forget - does not wait for completion.
+ */
+export function warmCache(lat: number, lon: number, radiusKm: number = 15): void {
+  // Fire and forget - don't await
+  fetch(`${API_BASE}/cache/warm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lat, lon, radius_km: radiusKm }),
+  }).catch((err) => {
+    console.warn('Cache warming request failed (non-blocking):', err);
+  });
+}
+
+/**
+ * Check if a region is already cached.
+ */
+export async function getCacheStatus(
+  lat: number,
+  lon: number,
+  radiusKm: number = 15,
+): Promise<{
+  cached: boolean;
+  cache_key: string;
+  node_count?: number;
+  edge_count?: number;
+  source?: string;
+}> {
+  const params = new URLSearchParams({
+    lat: lat.toString(),
+    lon: lon.toString(),
+    radius_km: radiusKm.toString(),
+  });
+  return request(`/cache/status?${params}`);
+}
+
+/**
+ * Calculate the center point and required radius to cover two coordinates.
+ * Returns the center lat/lon and a radius that covers both points with a buffer.
+ */
+export function calculateCacheRegion(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+  bufferKm: number = 5,
+): { centerLat: number; centerLon: number; radiusKm: number } {
+  const centerLat = (lat1 + lat2) / 2;
+  const centerLon = (lon1 + lon2) / 2;
+  
+  // Haversine distance calculation
+  const R = 6371; // Earth's radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  
+  // Radius is half the distance plus buffer
+  const radiusKm = Math.min(distance / 2 + bufferKm, 100); // Cap at 100km
+  
+  return { centerLat, centerLon, radiusKm };
 }
 
 // ─── Health ───────────────────────────────────────────────────

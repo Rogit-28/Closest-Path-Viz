@@ -1,16 +1,18 @@
-version: '3.8'
-
 services:
+
   postgres:
-    image: postgis/postgis:16-3.3
+    image: postgis/postgis:16-3.4
     container_name: closest_path_db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: pathfinding
       POSTGRES_USER: pathfinder
-      POSTGRES_PASSWORD: pathfinder_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pathfinder_password}
     ports:
       - "5432:5432"
+
     volumes:
+
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pathfinder -d pathfinding"]
@@ -21,9 +23,12 @@ services:
   redis:
     image: redis:7-alpine
     container_name: closest_path_redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
+
     volumes:
+
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -36,10 +41,12 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: closest_path_api
+    restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://pathfinder:pathfinder_password@postgres:5432/pathfinding
+      DATABASE_URL: postgresql+asyncpg://pathfinder:${POSTGRES_PASSWORD:-pathfinder_password}@postgres:5432/pathfinding
       REDIS_URL: redis://redis:6379/0
       ENV: production
+
     ports:
       - "8000:8000"
     depends_on:
@@ -50,12 +57,13 @@ services:
     volumes:
       - ./backend:/app
     command: >
-      sh -c "python -m alembic upgrade head &&
-             python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
   nginx:
     image: nginx:alpine
     container_name: closest_path_web
+    restart: unless-stopped
+
     ports:
       - "80:80"
       - "443:443"
@@ -65,7 +73,7 @@ services:
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 10s
       timeout: 5s
       retries: 5

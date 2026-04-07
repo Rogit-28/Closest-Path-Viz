@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { CachedCity } from '../types';
 import { getCachedCities, refreshCityCache, setCacheSchedule } from '../utils/api';
+import { Button } from './ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { ScrollArea } from './ui/scroll-area';
 
 export default function CacheManager() {
   const [cities, setCities] = useState<CachedCity[]>([]);
@@ -21,7 +24,7 @@ export default function CacheManager() {
       setCities(data);
     } catch (err) {
       setError('Failed to fetch cached cities. Please try again later.');
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
     } finally {
       setLoading(false);
     }
@@ -35,7 +38,7 @@ export default function CacheManager() {
       await fetchCities();
     } catch (err) {
       setError(`Failed to refresh city ${cityId}.`);
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
     } finally {
       setRefreshingId(null);
     }
@@ -45,12 +48,16 @@ export default function CacheManager() {
     try {
       setRefreshingAll(true);
       setError(null);
-      const refreshPromises = cities.map(city => refreshCityCache(city.id));
-      await Promise.all(refreshPromises);
+      const refreshPromises = cities.map((city) => refreshCityCache(city.id));
+      const results = await Promise.allSettled(refreshPromises);
+      const failures = results.filter((r) => r.status === 'rejected');
+      if (failures.length > 0) {
+        setError(`Failed to refresh ${failures.length} of ${cities.length} cities.`);
+      }
       await fetchCities();
     } catch (err) {
       setError('Failed to refresh all cities.');
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
     } finally {
       setRefreshingAll(false);
     }
@@ -63,7 +70,7 @@ export default function CacheManager() {
       await fetchCities();
     } catch (err) {
       setError(`Failed to set schedule for city ${cityId}.`);
-      console.error(err);
+      if (import.meta.env.DEV) console.error(err);
     }
   };
 
@@ -78,95 +85,105 @@ export default function CacheManager() {
   };
 
   return (
-    <div className="p-6 bg-slate-900 min-h-screen text-slate-200">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Cache Manager</h1>
-        <button
+    <div className="min-h-screen bg-black p-6 text-neutral-200">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="font-display text-base font-semibold text-white">Cache manager</h1>
+        <Button
           onClick={handleRefreshAll}
           disabled={loading || refreshingAll || cities.length === 0}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md disabled:opacity-50 transition-colors"
+          variant="primary"
         >
-          {refreshingAll ? 'Refreshing All...' : 'Refresh All'}
-        </button>
+          {refreshingAll ? 'Refreshing all...' : 'Refresh all'}
+        </Button>
       </div>
 
       {error && (
-        <div className="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-md mb-6">
+        <div className="mb-6 rounded border border-red-900/50 bg-red-950/30 px-4 py-3 text-red-300">
           {error}
         </div>
       )}
 
       {loading ? (
-        <div className="text-center py-10">
-          <p className="text-xl text-slate-400">Loading cities...</p>
+        <div className="py-10 text-center">
+          <p className="text-xl text-neutral-500">Loading cities...</p>
         </div>
       ) : cities.length === 0 ? (
-        <div className="text-center py-10 bg-slate-800 rounded-lg border border-slate-700">
-          <p className="text-xl text-slate-400">No cached cities</p>
+        <div className="rounded border border-neutral-800 bg-neutral-950 py-10 text-center">
+          <p className="text-xl text-neutral-500">No cached cities</p>
         </div>
       ) : (
-        <div className="overflow-x-auto bg-slate-800 rounded-lg border border-slate-700 shadow-xl">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-700 border-b border-slate-600">
-                <th className="p-4 font-semibold">City</th>
-                <th className="p-4 font-semibold">Nodes / Edges</th>
-                <th className="p-4 font-semibold">Last Refresh</th>
-                <th className="p-4 font-semibold">Next Refresh</th>
-                <th className="p-4 font-semibold">Schedule</th>
-                <th className="p-4 font-semibold">Status</th>
-                <th className="p-4 font-semibold text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cities.map((city) => (
-                <tr key={city.id} className="border-b border-slate-700 hover:bg-slate-700/50 transition-colors">
-                  <td className="p-4">
-                    <div className="font-medium">{city.name}</div>
-                    <div className="text-sm text-slate-400">{city.country}</div>
-                  </td>
-                  <td className="p-4 text-sm">
-                    <div>{city.node_count.toLocaleString()} N</div>
-                    <div className="text-slate-400">{city.edge_count.toLocaleString()} E</div>
-                  </td>
-                  <td className="p-4 text-sm">{formatDate(city.last_refresh)}</td>
-                  <td className="p-4 text-sm">{formatDate(city.next_refresh)}</td>
-                  <td className="p-4">
-                    <select
-                      value={city.schedule}
-                      onChange={(e) => handleScheduleChange(city.id, e.target.value)}
-                      className="bg-slate-900 border border-slate-600 text-slate-200 text-sm rounded focus:ring-blue-500 focus:border-blue-500 block p-2"
-                    >
-                      <option value="manual">Manual</option>
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
-                    </select>
-                  </td>
-                  <td className="p-4">
-                    {city.pending_approval ? (
-                      <span className="bg-yellow-900 text-yellow-200 text-xs font-medium px-2.5 py-0.5 rounded border border-yellow-700">
-                        Pending Approval
-                      </span>
-                    ) : (
-                      <span className="bg-green-900 text-green-200 text-xs font-medium px-2.5 py-0.5 rounded border border-green-700">
-                        Active
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-4 text-right">
-                    <button
-                      onClick={() => handleRefresh(city.id)}
-                      disabled={refreshingId === city.id || refreshingAll}
-                      className="bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-1.5 rounded disabled:opacity-50 transition-colors"
-                    >
-                      {refreshingId === city.id ? 'Refreshing...' : 'Refresh'}
-                    </button>
-                  </td>
+        <div className="glass-panel rounded border border-neutral-800">
+          <ScrollArea className="w-full">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-neutral-800 bg-neutral-950 text-neutral-400">
+                  <th className="p-4 font-medium">City</th>
+                  <th className="p-4 font-medium">Nodes / Edges</th>
+                  <th className="p-4 font-medium">Last Refresh</th>
+                  <th className="p-4 font-medium">Next Refresh</th>
+                  <th className="p-4 font-medium">Schedule</th>
+                  <th className="p-4 font-medium">Status</th>
+                  <th className="p-4 text-right font-medium">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {cities.map((city) => (
+                  <tr
+                    key={city.id}
+                    className="border-b border-neutral-900 transition-colors hover:bg-neutral-950"
+                  >
+                    <td className="p-4">
+                      <div className="font-medium text-white">{city.name}</div>
+                      <div className="text-xs text-neutral-500">{city.country}</div>
+                    </td>
+                    <td className="p-4 text-xs text-neutral-400">
+                      <div>{city.node_count.toLocaleString()} N</div>
+                      <div className="text-neutral-600">{city.edge_count.toLocaleString()} E</div>
+                    </td>
+                    <td className="p-4 text-xs text-neutral-400">{formatDate(city.last_refresh)}</td>
+                    <td className="p-4 text-xs text-neutral-400">{formatDate(city.next_refresh)}</td>
+                    <td className="min-w-[140px] p-4">
+                      <Select
+                        value={city.schedule}
+                        onValueChange={(value) => handleScheduleChange(city.id, value)}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue placeholder="Schedule" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="manual">Manual</SelectItem>
+                          <SelectItem value="daily">Daily</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="p-4">
+                      {city.pending_approval ? (
+                        <span className="rounded border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-xs text-amber-400">
+                          Pending
+                        </span>
+                      ) : (
+                        <span className="rounded border border-green-700/40 bg-green-950/30 px-2 py-0.5 text-xs text-green-400">
+                          Active
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-4 text-right">
+                      <Button
+                        onClick={() => handleRefresh(city.id)}
+                        disabled={refreshingId === city.id || refreshingAll}
+                        variant="secondary"
+                        size="sm"
+                      >
+                        {refreshingId === city.id ? 'Refreshing...' : 'Refresh'}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ScrollArea>
         </div>
       )}
     </div>
