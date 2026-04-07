@@ -47,3 +47,31 @@ coverage/
 
 # Docker
 docker-compose.override.yml
+
+# AI development artifacts
+pathfinding_prd.md
+
+# Large media files
+*.mp4
+
+# Windows artifacts
+nul
+
+# Backend cache
+backend/cache/
+
+# Local visual test artifacts
+.playwright-mcp/
+playwright-report/
+push-readiness-*.png
+
+# Local temporary verification outputs
+frontend/lint-output.txt
+frontend/type-check-output.txt
+
+# Local virtual environments
+venv/
+.venv/
+backend/venv/
+frontend/.venv/
+

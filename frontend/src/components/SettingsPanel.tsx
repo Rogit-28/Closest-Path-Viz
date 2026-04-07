@@ -10,23 +10,47 @@ import {
 } from '../types';
 import { useAppStore } from '../stores/appStore';
 import { getUserSettings, updateUserSettings, resetUserSettings } from '../utils/api';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Checkbox } from './ui/checkbox';
+import { Separator } from './ui/separator';
+import { ScrollArea } from './ui/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 
 export default function SettingsPanel() {
-  const store = useAppStore();
+  const showSettings = useAppStore((state) => state.showSettings);
+  const setShowSettings = useAppStore((state) => state.setShowSettings);
+  const updateConfig = useAppStore((state) => state.updateConfig);
+  const config = useAppStore((state) => state.config);
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
   const [settings, setSettings] = useState<UserSettings>({
     pathfinding: {
       default_algorithm: 'astar',
-      astar_heuristic: store.config.astar_heuristic,
-      weight_function: store.config.weight_function,
-      k_paths: store.config.k_paths,
-      show_all_explored: store.config.show_all_explored,
+      astar_heuristic: config.astar_heuristic,
+      weight_function: config.weight_function,
+      k_paths: config.k_paths,
+      show_all_explored: config.show_all_explored,
+      floyd_warshall_node_limit: config.floyd_warshall_node_limit || 1000,
     },
     visualization: {
-      animation_speed: store.config.animation_speed,
-      animation_granularity: store.config.animation_granularity,
+      animation_speed: config.animation_speed,
+      animation_granularity: config.animation_granularity,
       color_scheme: 'dark',
     },
     cache: {
@@ -38,26 +62,26 @@ export default function SettingsPanel() {
   });
 
   useEffect(() => {
-    if (store.showSettings) {
+    if (showSettings) {
       setLoading(true);
       getUserSettings()
         .then((data) => {
           setSettings(data);
-          store.updateConfig({
+          updateConfig({
             astar_heuristic: data.pathfinding.astar_heuristic,
             weight_function: data.pathfinding.weight_function,
             k_paths: data.pathfinding.k_paths,
             show_all_explored: data.pathfinding.show_all_explored,
             animation_speed: data.visualization.animation_speed,
             animation_granularity: data.visualization.animation_granularity,
+            floyd_warshall_node_limit: data.pathfinding.floyd_warshall_node_limit || 1000,
           });
         })
         .catch((err) => console.error('Failed to load settings:', err))
         .finally(() => setLoading(false));
     }
-  }, [store.showSettings]); // Intentional omit of store to avoid loops
+  }, [showSettings, updateConfig]);
 
-  if (!store.showSettings) return null;
 
   const handleSave = async () => {
     setLoading(true);
@@ -65,17 +89,18 @@ export default function SettingsPanel() {
     try {
       const updated = await updateUserSettings(settings);
       setSettings(updated);
-      
-      store.updateConfig({
+
+      updateConfig({
         astar_heuristic: updated.pathfinding.astar_heuristic,
         weight_function: updated.pathfinding.weight_function,
         k_paths: updated.pathfinding.k_paths,
         show_all_explored: updated.pathfinding.show_all_explored,
         animation_speed: updated.visualization.animation_speed,
         animation_granularity: updated.visualization.animation_granularity,
+        floyd_warshall_node_limit: updated.pathfinding.floyd_warshall_node_limit || 1000,
       });
 
-      setSaveStatus('Settings saved successfully!');
+      setSaveStatus('Settings saved successfully.');
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -90,17 +115,17 @@ export default function SettingsPanel() {
     setSaveStatus(null);
     try {
       await resetUserSettings();
-      
       const data = await getUserSettings();
       setSettings(data);
-      
-      store.updateConfig({
+
+      updateConfig({
         astar_heuristic: data.pathfinding.astar_heuristic,
         weight_function: data.pathfinding.weight_function,
         k_paths: data.pathfinding.k_paths,
         show_all_explored: data.pathfinding.show_all_explored,
         animation_speed: data.visualization.animation_speed,
         animation_granularity: data.visualization.animation_granularity,
+        floyd_warshall_node_limit: data.pathfinding.floyd_warshall_node_limit || 1000,
       });
 
       setSaveStatus('Reset to defaults.');
@@ -113,244 +138,301 @@ export default function SettingsPanel() {
     }
   };
 
-  const updatePathfinding = <K extends keyof UserSettings['pathfinding']>(key: K, value: UserSettings['pathfinding'][K]) => {
-    setSettings(prev => ({
+  const updatePathfinding = <K extends keyof UserSettings['pathfinding']>(
+    key: K,
+    value: UserSettings['pathfinding'][K]
+  ) => {
+    setSettings((prev) => ({
       ...prev,
-      pathfinding: { ...prev.pathfinding, [key]: value }
+      pathfinding: { ...prev.pathfinding, [key]: value },
     }));
   };
 
-  const updateViz = <K extends keyof UserSettings['visualization']>(key: K, value: UserSettings['visualization'][K]) => {
-    setSettings(prev => ({
+  const updateViz = <K extends keyof UserSettings['visualization']>(
+    key: K,
+    value: UserSettings['visualization'][K]
+  ) => {
+    setSettings((prev) => ({
       ...prev,
-      visualization: { ...prev.visualization, [key]: value }
+      visualization: { ...prev.visualization, [key]: value },
     }));
   };
 
-  const updateCache = <K extends keyof UserSettings['cache']>(key: K, value: UserSettings['cache'][K]) => {
-    setSettings(prev => ({
+  const updateCache = <K extends keyof UserSettings['cache']>(
+    key: K,
+    value: UserSettings['cache'][K]
+  ) => {
+    setSettings((prev) => ({
       ...prev,
-      cache: { ...prev.cache, [key]: value }
+      cache: { ...prev.cache, [key]: value },
     }));
   };
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
-      onClick={store.toggleSettings}
-    >
-      <div 
-        className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center p-4 border-b border-slate-700 sticky top-0 bg-slate-900 z-10">
-          <h2 className="text-xl font-semibold text-slate-100">Settings</h2>
-          <button 
-            onClick={store.toggleSettings}
-            className="text-slate-400 hover:text-white transition-colors"
-          >
-            ✕
-          </button>
-        </div>
+    <Dialog open={showSettings} onOpenChange={(open) => setShowSettings(open)}>
+      <DialogContent className="border-neutral-800 bg-black p-0 text-neutral-100 sm:max-w-2xl">
+        <DialogHeader className="border-b border-neutral-800 px-6 py-4">
+          <DialogTitle className="text-base font-semibold text-white">Settings</DialogTitle>
+          <DialogDescription className="text-neutral-500">
+            Configure pathfinding, visualization, and cache preferences.
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="p-6 space-y-8">
-          {loading && !settings ? (
-            <div className="text-center text-slate-400">Loading settings...</div>
-          ) : (
-            <>
-              {/* Pathfinding Section */}
-              <section className="space-y-4">
-                <h3 className="text-lg font-medium text-slate-200 border-b border-slate-800 pb-2">Pathfinding</h3>
-                
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Default Algorithm</label>
-                    <select 
-                      className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 w-full"
-                      value={settings.pathfinding.default_algorithm}
-                      onChange={e => updatePathfinding('default_algorithm', e.target.value as AlgorithmType)}
-                    >
-                      {(Object.keys(ALGORITHM_NAMES) as AlgorithmType[]).map(key => (
-                        <option key={key} value={key}>{ALGORITHM_NAMES[key]}</option>
-                      ))}
-                    </select>
-                  </div>
+        <ScrollArea className="max-h-[70vh] px-6 py-5">
+          <div className="space-y-6">
+            <section className="space-y-4">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                Pathfinding
+              </h3>
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">A* Heuristic</label>
-                    <select 
-                      className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 w-full"
-                      value={settings.pathfinding.astar_heuristic}
-                      onChange={e => updatePathfinding('astar_heuristic', e.target.value as HeuristicType)}
-                    >
-                      <option value="haversine">Haversine (Great Circle)</option>
-                      <option value="manhattan">Manhattan</option>
-                      <option value="euclidean">Euclidean</option>
-                      <option value="zero">Zero (Dijkstra)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Weight Function</label>
-                    <select 
-                      className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 w-full"
-                      value={settings.pathfinding.weight_function}
-                      onChange={e => updatePathfinding('weight_function', e.target.value as WeightFunction)}
-                    >
-                      <option value="distance">Shortest Distance</option>
-                      <option value="time">Fastest Time</option>
-                      <option value="hybrid">Hybrid</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">K-Paths (Alternative Routes)</label>
-                    <input 
-                      type="number" 
-                      min="1" max="5"
-                      className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 w-full"
-                      value={settings.pathfinding.k_paths}
-                      onChange={e => updatePathfinding('k_paths', parseInt(e.target.value) || 1)}
-                    />
-                  </div>
-
-                  <div className="flex items-center mt-2">
-                    <input 
-                      type="checkbox" 
-                      id="showExplored"
-                      className="w-4 h-4 bg-slate-800 border-slate-700 rounded text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-900"
-                      checked={settings.pathfinding.show_all_explored}
-                      onChange={e => updatePathfinding('show_all_explored', e.target.checked)}
-                    />
-                    <label htmlFor="showExplored" className="ml-2 text-sm text-slate-300">
-                      Show all explored nodes
-                    </label>
-                  </div>
-                </div>
-              </section>
-
-              {/* Visualization Section */}
-              <section className="space-y-4">
-                <h3 className="text-lg font-medium text-slate-200 border-b border-slate-800 pb-2">Visualization</h3>
-                
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Animation Speed</label>
-                    <select 
-                      className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 w-full"
-                      value={settings.visualization.animation_speed}
-                      onChange={e => updateViz('animation_speed', parseFloat(e.target.value))}
-                    >
-                      {SPEED_OPTIONS.map(speed => (
-                        <option key={speed} value={speed}>
-                          {speed === 0 ? 'Instant (No Animation)' : `${speed}x`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Animation Granularity</label>
-                    <select 
-                      className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 w-full"
-                      value={settings.visualization.animation_granularity}
-                      onChange={e => updateViz('animation_granularity', e.target.value as AnimationGranularity)}
-                    >
-                      <option value="every_node">Every Node</option>
-                      <option value="every_n">Batch (Every N nodes)</option>
-                      <option value="frontier_only">Frontier Only</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Color Scheme</label>
-                    <input 
-                      type="text" 
-                      className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 w-full"
-                      value={settings.visualization.color_scheme}
-                      onChange={e => updateViz('color_scheme', e.target.value)}
-                    />
-                  </div>
-                </div>
-              </section>
-
-              {/* Cache Section */}
-              <section className="space-y-4">
-                <h3 className="text-lg font-medium text-slate-200 border-b border-slate-800 pb-2">Cache</h3>
-                
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Refresh Schedule</label>
-                    <input 
-                      type="text" 
-                      placeholder="daily"
-                      className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 w-full"
-                      value={settings.cache.refresh_schedule}
-                      onChange={e => updateCache('refresh_schedule', e.target.value)}
-                    />
-                  </div>
-
-                  <div className="flex items-center mt-2">
-                    <input 
-                      type="checkbox" 
-                      id="promptRefresh"
-                      className="w-4 h-4 bg-slate-800 border-slate-700 rounded text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-900"
-                      checked={settings.cache.prompt_on_refresh}
-                      onChange={e => updateCache('prompt_on_refresh', e.target.checked)}
-                    />
-                    <label htmlFor="promptRefresh" className="ml-2 text-sm text-slate-300">
-                      Prompt before cache refresh
-                    </label>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-400 mb-1">Auto-approve after (days)</label>
-                      <input 
-                        type="number" 
-                        min="1"
-                        className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 w-full"
-                        value={settings.cache.auto_approve_after_days}
-                        onChange={e => updateCache('auto_approve_after_days', parseInt(e.target.value) || 0)}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-400 mb-1">Defer max (days)</label>
-                      <input 
-                        type="number" 
-                        min="1"
-                        className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 w-full"
-                        value={settings.cache.defer_max_days}
-                        onChange={e => updateCache('defer_max_days', parseInt(e.target.value) || 0)}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <div className="flex items-center justify-between pt-4 mt-6 border-t border-slate-700">
-                <span className="text-sm text-green-400">{saveStatus}</span>
-                <div className="space-x-4">
-                  <button 
-                    onClick={handleReset}
-                    disabled={loading}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded text-sm font-medium text-slate-300 transition-colors disabled:opacity-50"
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm text-neutral-500">Default algorithm</label>
+                  <Select
+                    value={settings.pathfinding.default_algorithm}
+                    onValueChange={(value) =>
+                      updatePathfinding('default_algorithm', value as AlgorithmType)
+                    }
                   >
-                    Reset to Defaults
-                  </button>
-                  <button 
-                    onClick={handleSave}
-                    disabled={loading}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium text-white shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50"
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select algorithm" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(ALGORITHM_NAMES) as AlgorithmType[]).map((key) => (
+                        <SelectItem key={key} value={key}>
+                          {ALGORITHM_NAMES[key]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm text-neutral-500">A* heuristic</label>
+                  <Select
+                    value={settings.pathfinding.astar_heuristic}
+                    onValueChange={(value) =>
+                      updatePathfinding('astar_heuristic', value as HeuristicType)
+                    }
                   >
-                    {loading ? 'Saving...' : 'Save Settings'}
-                  </button>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select heuristic" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="haversine">Haversine</SelectItem>
+                      <SelectItem value="manhattan">Manhattan</SelectItem>
+                      <SelectItem value="euclidean">Euclidean</SelectItem>
+                      <SelectItem value="zero">Zero (Dijkstra)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm text-neutral-500">Weight function</label>
+                  <Select
+                    value={settings.pathfinding.weight_function}
+                    onValueChange={(value) =>
+                      updatePathfinding('weight_function', value as WeightFunction)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select weight function" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="distance">Shortest distance</SelectItem>
+                      <SelectItem value="time">Fastest time</SelectItem>
+                      <SelectItem value="hybrid">Hybrid</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm text-neutral-500">K-Paths</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={settings.pathfinding.k_paths}
+                    onChange={(e) =>
+                      updatePathfinding('k_paths', parseInt(e.target.value, 10) || 1)
+                    }
+                    className="font-ui-mono"
+                  />
                 </div>
               </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+
+              {/* Floyd-Warshall Node Limit Slider */}
+              <div className="space-y-3 rounded border border-neutral-800 bg-black p-3">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-neutral-500">
+                    <span>Floyd-Warshall Node Limit</span>
+                    <span className="font-ui-mono text-neutral-300">
+                      {(settings.pathfinding.floyd_warshall_node_limit || 1000).toLocaleString()}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1000"
+                    max="5000"
+                    step="100"
+                    value={settings.pathfinding.floyd_warshall_node_limit || 1000}
+                    onChange={(e) => {
+                      updatePathfinding('floyd_warshall_node_limit', parseInt(e.target.value, 10));
+                    }}
+                    className="h-2 w-full cursor-pointer rounded bg-neutral-800"
+                    style={{
+                      accentColor: `rgb(${Math.round(220 + ((settings.pathfinding.floyd_warshall_node_limit || 1000) - 1000) / 4000 * 35)}, ${Math.round(38 - ((settings.pathfinding.floyd_warshall_node_limit || 1000) - 1000) / 4000 * 38)}, ${Math.round(38 - ((settings.pathfinding.floyd_warshall_node_limit || 1000) - 1000) / 4000 * 38)})`,
+                    }}
+                  />
+                </div>
+                <p className="text-xs leading-relaxed text-neutral-500">
+                  Floyd-Warshall has O(V³) complexity. Higher limits increase computation time exponentially.
+                  {(settings.pathfinding.floyd_warshall_node_limit || 1000) >= 4000 && (
+                    <span className="block mt-1 text-amber-400">
+                      ⚠️ Values above 4000 may cause significant delays or timeouts.
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-neutral-400">
+                <Checkbox
+                  checked={settings.pathfinding.show_all_explored}
+                  onCheckedChange={(checked) =>
+                    updatePathfinding('show_all_explored', Boolean(checked))
+                  }
+                />
+                Show explored junctions + streets
+              </label>
+            </section>
+
+            <Separator />
+
+            <section className="space-y-4">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                Visualization
+              </h3>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm text-neutral-500">Animation speed</label>
+                  <Select
+                    value={String(settings.visualization.animation_speed)}
+                    onValueChange={(value) =>
+                      updateViz('animation_speed', parseFloat(value))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select speed" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SPEED_OPTIONS.map((speed) => (
+                        <SelectItem key={speed} value={String(speed)}>
+                          {speed === 0 ? 'Instant (No animation)' : `${speed}x`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm text-neutral-500">Animation granularity</label>
+                  <Select
+                    value={settings.visualization.animation_granularity}
+                    onValueChange={(value) =>
+                      updateViz('animation_granularity', value as AnimationGranularity)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select granularity" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="every_node">Every node</SelectItem>
+                      <SelectItem value="every_n">Batch (every N nodes)</SelectItem>
+                      <SelectItem value="frontier_only">Frontier only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-sm text-neutral-500">Color scheme</label>
+                  <Input
+                    type="text"
+                    value={settings.visualization.color_scheme}
+                    onChange={(e) => updateViz('color_scheme', e.target.value)}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <Separator />
+
+            <section className="space-y-4">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                Cache
+              </h3>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-sm text-neutral-500">Refresh schedule</label>
+                  <Input
+                    type="text"
+                    placeholder="daily"
+                    value={settings.cache.refresh_schedule}
+                    onChange={(e) => updateCache('refresh_schedule', e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm text-neutral-500">Auto-approve after (days)</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={settings.cache.auto_approve_after_days}
+                    onChange={(e) =>
+                      updateCache('auto_approve_after_days', parseInt(e.target.value, 10) || 0)
+                    }
+                    className="font-ui-mono"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm text-neutral-500">Defer max (days)</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={settings.cache.defer_max_days}
+                    onChange={(e) =>
+                      updateCache('defer_max_days', parseInt(e.target.value, 10) || 0)
+                    }
+                    className="font-ui-mono"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-neutral-400">
+                <Checkbox
+                  checked={settings.cache.prompt_on_refresh}
+                  onCheckedChange={(checked) =>
+                    updateCache('prompt_on_refresh', Boolean(checked))
+                  }
+                />
+                Prompt before cache refresh
+              </label>
+            </section>
+          </div>
+        </ScrollArea>
+
+        <DialogFooter className="items-center border-t border-neutral-800 px-6 py-4">
+          <span className="mr-auto text-sm text-neutral-500">{saveStatus}</span>
+          <Button onClick={handleReset} disabled={loading} variant="secondary">
+            Reset to Defaults
+          </Button>
+          <Button onClick={handleSave} disabled={loading} variant="primary">
+            {loading ? 'Saving...' : 'Save Settings'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
